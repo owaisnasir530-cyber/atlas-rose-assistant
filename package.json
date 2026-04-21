@@ -11,6 +11,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@shopify/storefront-api-client": "^1.0.10",
     "openai": "^6.34.0"
   }
 }
