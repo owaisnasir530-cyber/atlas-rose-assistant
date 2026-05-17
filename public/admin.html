@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atlas Rose — Prompt Manager</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0000;
+      color: #e8c4a0;
+      font-family: Georgia, serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 860px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .header h1 {
+      font-size: 26px;
+      color: #e8c4a0;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+
+    .header p {
+      color: #8b4444;
+      font-size: 13px;
+    }
+
+    /* Login */
+    #login-screen {
+      background: #1a0000;
+      border: 1px solid #8b0000;
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    #login-screen h2 {
+      font-size: 18px;
+      margin-bottom: 20px;
+      color: #e8c4a0;
+    }
+
+    #login-screen input {
+      width: 100%;
+      padding: 12px 16px;
+      background: #2d0000;
+      border: 1px solid #3d0000;
+      border-radius: 8px;
+      color: #e8c4a0;
+      font-size: 14px;
+      outline: none;
+      margin-bottom: 12px;
+      font-family: Georgia, serif;
+    }
+
+    #login-screen input:focus {
+      border-color: #8b0000;
+    }
+
+    /* Admin panel */
+    #admin-panel { display: none; }
+
+    .card {
+      background: #1a0000;
+      border: 1px solid #8b0000;
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      color: #8b4444;
+      letter-spacing: 0.5px;
+      margin-bottom: 14px;
+      text-transform: uppercase;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 420px;
+      background: #0f0000;
+      border: 1px solid #3d0000;
+      border-radius: 10px;
+      color: #e8c4a0;
+      font-size: 13px;
+      line-height: 1.7;
+      padding: 16px;
+      outline: none;
+      resize: vertical;
+      font-family: 'Courier New', monospace;
+    }
+
+    textarea:focus {
+      border-color: #8b0000;
+    }
+
+    .meta {
+      font-size: 12px;
+      color: #6b3333;
+      margin-top: 10px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 16px;
+    }
+
+    button {
+      padding: 12px 24px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-family: Georgia, serif;
+      transition: background 0.2s;
+    }
+
+    .btn-save {
+      background: #8b0000;
+      color: #e8c4a0;
+    }
+
+    .btn-save:hover { background: #a00000; }
+    .btn-save:disabled { background: #3d0000; cursor: not-allowed; }
+
+    .btn-reset {
+      background: transparent;
+      color: #8b4444;
+      border: 1px solid #3d0000;
+    }
+
+    .btn-reset:hover { background: #2d0000; }
+
+    .status {
+      font-size: 13px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      display: none;
+    }
+
+    .status.success {
+      background: #0a2a0a;
+      color: #4caf50;
+      border: 1px solid #2a5a2a;
+      display: block;
+    }
+
+    .status.error {
+      background: #2a0a0a;
+      color: #f44336;
+      border: 1px solid #5a2a2a;
+      display: block;
+    }
+
+    .loading {
+      text-align: center;
+      color: #8b4444;
+      font-size: 14px;
+      padding: 40px;
+    }
+
+    .char-count {
+      font-size: 12px;
+      color: #6b3333;
+      text-align: right;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>✦ Atlas Rose</h1>
+    <p>AI Assistant — Prompt Manager</p>
+  </div>
+
+  <!-- Login -->
+  <div id="login-screen">
+    <h2>Enter Password</h2>
+    <input type="password" id="password-input" placeholder="Password" />
+    <button class="btn-save" style="width:100%" onclick="login()">Access Dashboard</button>
+    <div id="login-error" class="status error" style="margin-top:12px;"></div>
+  </div>
+
+  <!-- Admin Panel -->
+  <div id="admin-panel">
+    <div class="card">
+      <div class="card-title">System Prompt</div>
+      <div id="loading" class="loading">Loading current prompt...</div>
+      <textarea id="prompt-textarea" style="display:none" oninput="updateCharCount()"></textarea>
+      <div class="char-count" id="char-count"></div>
+      <div class="meta" id="last-updated"></div>
+      <div class="actions">
+        <button class="btn-save" id="save-btn" onclick="savePrompt()" disabled>Save & Go Live</button>
+        <button class="btn-reset" onclick="resetPrompt()">Discard Changes</button>
+        <div class="status" id="save-status"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Tips</div>
+      <p style="font-size:13px;line-height:1.8;color:#c4a484;">
+        • Changes go live within 2 minutes (prompt cache refreshes automatically)<br>
+        • Keep tone rules at the top — the AI reads them first<br>
+        • Always include the primary product URL in the prompt<br>
+        • Test your changes in the live chat widget after saving<br>
+        • If something breaks, use Discard Changes before saving again
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = window.location.origin;
+  let currentPassword = "";
+  let originalPrompt = "";
+
+  // Enter key on password field
+  document.getElementById("password-input").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") login();
+  });
+
+  async function login() {
+    const password = document.getElementById("password-input").value.trim();
+    if (!password) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin?password=${encodeURIComponent(password)}`);
+      
+      if (res.status === 401) {
+        const errEl = document.getElementById("login-error");
+        errEl.textContent = "Incorrect password.";
+        errEl.style.display = "block";
+        return;
+      }
+
+      const data = await res.json();
+      currentPassword = password;
+
+      // Show admin panel
+      document.getElementById("login-screen").style.display = "none";
+      document.getElementById("admin-panel").style.display = "block";
+
+      // Load prompt
+      const textarea = document.getElementById("prompt-textarea");
+      textarea.value = data.prompt_value;
+      originalPrompt = data.prompt_value;
+
+      document.getElementById("loading").style.display = "none";
+      textarea.style.display = "block";
+      document.getElementById("save-btn").disabled = false;
+
+      // Last updated
+      if (data.updated_at) {
+        const date = new Date(data.updated_at);
+        document.getElementById("last-updated").textContent = 
+          `Last updated: ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`;
+      }
+
+      updateCharCount();
+
+    } catch (err) {
+      const errEl = document.getElementById("login-error");
+      errEl.textContent = "Something went wrong. Try again.";
+      errEl.style.display = "block";
+    }
+  }
+
+  async function savePrompt() {
+    const prompt = document.getElementById("prompt-textarea").value.trim();
+    const saveBtn = document.getElementById("save-btn");
+    const statusEl = document.getElementById("save-status");
+
+    if (!prompt) return;
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving...";
+    statusEl.className = "status";
+    statusEl.style.display = "none";
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: currentPassword, prompt })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        originalPrompt = prompt;
+        statusEl.className = "status success";
+        statusEl.textContent = "✓ Prompt saved and live within 2 minutes.";
+
+        // Update last updated time
+        document.getElementById("last-updated").textContent = 
+          `Last updated: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}`;
+      } else {
+        statusEl.className = "status error";
+        statusEl.textContent = data.error || "Failed to save. Try again.";
+      }
+
+    } catch (err) {
+      statusEl.className = "status error";
+      statusEl.textContent = "Something went wrong. Try again.";
+    }
+
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Save & Go Live";
+  }
+
+  function resetPrompt() {
+    document.getElementById("prompt-textarea").value = originalPrompt;
+    document.getElementById("save-status").className = "status";
+    updateCharCount();
+  }
+
+  function updateCharCount() {
+    const len = document.getElementById("prompt-textarea").value.length;
+    document.getElementById("char-count").textContent = `${len} characters`;
+  }
+</script>
+
+</body>
+</html>

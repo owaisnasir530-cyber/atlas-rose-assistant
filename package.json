@@ -12,6 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "@shopify/storefront-api-client": "^1.0.10",
+    "@supabase/supabase-js": "^2.105.4",
     "openai": "^6.34.0"
   }
 }

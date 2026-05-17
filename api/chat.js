@@ -1,5 +1,6 @@
 const OpenAI = require("openai");
 const { createStorefrontApiClient } = require("@shopify/storefront-api-client");
+const { createClient } = require("@supabase/supabase-js");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -8,6 +9,11 @@ const shopify = createStorefrontApiClient({
   apiVersion: "2026-04",
   privateAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN
 });
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
 
 const PRODUCTS_QUERY = `
   query {
@@ -29,13 +35,17 @@ const PRODUCTS_QUERY = `
   }
 `;
 
-// Cache — refreshes every 10 minutes
+// Product cache — refreshes every 10 minutes
 let productCache = null;
-let cacheTime = 0;
+let productCacheTime = 0;
+
+// Prompt cache — refreshes every 2 minutes
+let promptCache = null;
+let promptCacheTime = 0;
 
 async function getCachedProducts() {
   const now = Date.now();
-  if (productCache && (now - cacheTime) < 10 * 60 * 1000) {
+  if (productCache && (now - productCacheTime) < 10 * 60 * 1000) {
     return productCache;
   }
 
@@ -55,7 +65,7 @@ async function getCachedProducts() {
     });
 
     productCache = lines.join("\n");
-    cacheTime = now;
+    productCacheTime = now;
     return productCache;
 
   } catch (err) {
@@ -64,67 +74,34 @@ async function getCachedProducts() {
   }
 }
 
-const BASE_SYSTEM_PROMPT = `You are a sales assistant for Atlas Rose Dark Romance — a premium dark romance book store.
-Your ONLY job is to get the customer to buy. Not to inform. Not to explain. To convert.
+async function getCachedPrompt() {
+  const now = Date.now();
+  if (promptCache && (now - promptCacheTime) < 2 * 60 * 1000) {
+    return promptCache;
+  }
 
-TONE RULES:
-- Emotionally driven. Intense. Seductive. Urgent.
-- NEVER informational. Never describe features.
-- Max 2 sentences per response. Always.
-- Examples:
-  "This is obsession, not romance."
-  "If you want something intense, start here."
-  "This isn't a slow read — you'll binge this."
-  "Tell me what you're in the mood for — something darker, or something addictive?"
-  "You won't sleep. You won't stop. Start here."
-  "This one ruins you for other books."
+  try {
+    const { data, error } = await supabase
+      .from("prompt_config")
+      .select("prompt_value")
+      .eq("prompt_key", "system_prompt")
+      .single();
 
-DECISION SPEED RULES:
-- Never ask more than ONE question before recommending
-- If user is unsure → skip questions, push Audio Bundle immediately
-- Guide toward a decision in maximum 2 exchanges
-- Never present options or comparisons — just tell them what to get
+    if (error || !data) {
+      console.error("Supabase error:", error);
+      return null;
+    }
 
-ROUTING — STOP AT FIRST MATCH:
-IF new, unsure, browsing, or no clear signal:
-  → Push Blood Ties Complete Audiobook Collection immediately. No questions.
+    promptCache = data.prompt_value;
+    promptCacheTime = now;
+    return promptCache;
 
-IF user says they've read 3+ books OR "what's next" OR "already read" OR "finished":
-  → Push Bundles / Omnibus. One line. Direct.
+  } catch (err) {
+    console.error("Prompt fetch error:", err);
+    return null;
+  }
+}
 
-IF user mentions 1-2 books read:
-  → Push next book in series. Direct link. No explanation.
-
-IF user mentions physical, signed, special edition, paperback:
-  → Push Special Editions. Direct link.
-
-PRODUCT LINK RULE:
-- One product per response. Always.
-- Include URL every time you recommend.
-- Primary: https://atlasrosedarkromance.com/products/the-complete-blood-ties-audiobook-collection
-
-EMAIL CAPTURE RULE:
-STEP 1: User asks price OR shows buying intent:
-  → Give price in one line
-  → End with: "I can send that straight to your inbox — what's your email?"
-  → No product link yet
-
-STEP 2: User gives email:
-  → Tag: [CAPTURE_EMAIL: email@example.com]
-  → Give product link immediately after
-
-STEP 3: User ignores email ask:
-  → Give link anyway. Never block the sale.
-
-STEP 4: Never ask for email twice.
-
-NEVER:
-- Give more than 2 sentences
-- List multiple products
-- Sound informational or descriptive
-- Ask multiple questions
-- Explain features
-- Break character`;
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "https://atlasrosedarkromance.com");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -139,7 +116,12 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: "Invalid messages" });
   }
 
-  let systemPrompt = BASE_SYSTEM_PROMPT;
+  // Fetch prompt from Supabase
+  let systemPrompt = await getCachedPrompt();
+
+  if (!systemPrompt) {
+    return res.status(500).json({ error: "Could not load prompt configuration" });
+  }
 
   // Inject customer context
   if (customer && customer.id) {
@@ -171,8 +153,8 @@ module.exports = async (req, res) => {
         { role: "system", content: systemPrompt },
         ...recentMessages
       ],
-      max_tokens: 300,
-      temperature: 0.3
+      max_tokens: 200,
+      temperature: 0.7
     });
 
     const reply = completion.choices[0].message.content;
